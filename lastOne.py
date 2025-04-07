@@ -5,6 +5,10 @@ import scipy.stats as stats
 import pandas as pd
 import os
 import tkinter.font as tkfont
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from scipy.stats import norm, t
+from tkhtmlview import HTMLLabel
 
 def parse_data(data_str):
     """Convierte una cadena de datos separados por comas a una lista de números"""
@@ -17,7 +21,63 @@ def parse_data(data_str):
         messagebox.showerror("Error", "Los datos ingresados no son válidos. Deben ser números separados por comas.")
         return None
 
-def calculate_confidence_interval(data_entry, conf_level_entry, test_type_combobox, results_text):
+def plot_distribution(test_stat, critical_value, test_type, direction, n, frame):
+    """Grafica la distribución t-student o normal Z con los valores críticos y el valor de prueba y la integra en un frame de tkinter"""
+    x_values = np.linspace(-4, 4, 1000)
+    
+    fig, ax = plt.subplots()
+    
+    # Configurar el color de fondo y el contraste de las letras
+    fig.patch.set_facecolor('#403d39')
+    ax.set_facecolor('#403d39')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.spines['bottom'].set_color('white')
+    ax.spines['top'].set_color('white') 
+    ax.spines['right'].set_color('white')
+    ax.spines['left'].set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.xaxis.label.set_color('white')
+    ax.title.set_color('white')
+    
+    if "Z" in test_type:
+        # Distribución Z (normal estándar)
+        y_values = norm.pdf(x_values)
+        ax.plot(x_values, y_values, label='Distribución Z', color='#f08c00', linewidth=4)
+    else:
+        # Distribución t
+        df = n - 1
+        y_values = t.pdf(x_values, df)
+        ax.plot(x_values, y_values, label=f'Distribución t (df={df})', color='#f08c00', linewidth=4)
+        
+    # Graficar el valor crítico y el valor de prueba
+    ax.axvline(x=test_stat, color='#197278', linestyle='--', label=f'Estadístico de prueba ({test_stat:.2f})', linewidth=2)
+    
+    if direction == "Dos colas":
+        ax.axvline(x=critical_value, color='#9e2a2b', linestyle='--', linewidth=2, label=f'Valor crítico ({critical_value:.2f})')
+        ax.axvline(x=-critical_value, color='#9e2a2b', linestyle='--', linewidth=2)
+        ax.fill_between(x_values, 0, y_values, where=(x_values <= -critical_value) | (x_values >= critical_value), color='#9e2a2b', alpha=0.3)
+    elif direction == "Cola izquierda":
+        ax.axvline(x=critical_value, color='#9e2a2b', linestyle='--', linewidth=2, label=f'Valor crítico ({critical_value:.2f})')
+        ax.fill_between(x_values, 0, y_values, where=(x_values <= critical_value), color='#9e2a2b', alpha=0.3)
+    else:  # Cola derecha
+        ax.axvline(x=critical_value, color='#9e2a2b', linestyle='--', linewidth=2, label=f'Valor crítico ({critical_value:.2f})')
+        ax.fill_between(x_values, 0, y_values, where=(x_values >= critical_value), color='#9e2a2b', alpha=0.3)
+    
+    ax.legend(facecolor='#000000', edgecolor='white', framealpha=0.5)
+    for text in ax.legend().get_texts():
+        text.set_color('#000000')
+        
+    ax.set_title('Distribución de prueba con valores críticos y estadístico de prueba', color='white', fontsize=12)
+    ax.set_xlabel('Valor de la variable', color='white', fontsize=11)
+    ax.set_ylabel('Densidad de probabilidad', color='white', fontsize=11)
+
+    # Crear el canvas de matplotlib y agregarlo al frame de tkinter
+    canvas = FigureCanvasTkAgg(fig, master=frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+def calculate_confidence_interval(data_entry, conf_level_entry, test_type_combobox, results_text, graph_frame):
     """Calcula el intervalo de confianza para la media"""
     data_str = data_entry.get()
     
@@ -60,33 +120,50 @@ def calculate_confidence_interval(data_entry, conf_level_entry, test_type_combob
             distribution = f"t-Student con {n-1} grados de libertad"
             
         # Mostrar resultados
-        results_text = f"""INTERVALO DE CONFIANZA PARA LA MEDIA
+        results_text_content = f"""
+📊 Intervalo de Confianza para la Media
+    📥 Datos de entrada
 
-Datos de entrada:
-- Tamaño de muestra (n): {n}
-- Media muestral (x̄): {mean:.6f}
-- Desviación estándar muestral (s): {std_dev:.6f}
-- Nivel de confianza: {conf_level:.1f}%
-- Tipo de prueba: {test_type}
+        🧮 Tamaño de muestra (n): {n}
 
-Cálculos:
-- Error estándar: {std_error:.6f}
-- Valor crítico ({distribution}): {critical_value:.6f}
-- Margen de error: {margin_error:.6f}
+        📈 Media muestral (x̄): {mean:.6f}
 
-Resultado:
-- Intervalo de confianza al {conf_level:.1f}%: [{lower_bound:.6f}, {upper_bound:.6f}]
-- Interpretación: Con un {conf_level:.1f}% de confianza, la media poblacional se encuentra entre {lower_bound:.6f} y {upper_bound:.6f}.
-"""
+        📉 Desviación estándar muestral (s): {std_dev:.6f}
+
+        🎯 Nivel de confianza: {conf_level:.1f}%
+
+        🧪 Tipo de prueba: {test_type}
+
+    🔍 Cálculos
+
+        🧾 Error estándar: {std_error:.6f}
+
+        📏 Valor crítico ({distribution}): {critical_value:.6f}
+
+        📐 Margen de error: {margin_error:.6f}
+
+    ✅ Resultado
+
+        📌 Intervalo de confianza al {conf_level:.1f}%: [{lower_bound:.6f}, {upper_bound:.6f}]
+
+        💡 Interpretación: Con un nivel de confianza del {conf_level:.1f}%, se estima que la media poblacional se encuentra entre {lower_bound:.6f} y {upper_bound:.6f}.
+        """
         
         results_text.delete(1.0, tk.END)
-        results_text.insert(tk.INSERT, results_text)
+        results_text.insert(tk.INSERT, results_text_content)
+        
+        # Limpiar el frame de la gráfica antes de dibujar
+        for widget in graph_frame.winfo_children():
+            widget.destroy()
+        
+        # Llamar a la función de graficado
+        plot_distribution(0, critical_value, test_type, "Dos colas", n, graph_frame)
         
     except Exception as e:
         messagebox.showerror("Error", f"Error en los cálculos: {str(e)}")
 
 def calculate_hypothesis_test(data_entry, null_hypo_entry, alpha_entry, test_type_combobox, 
-                              direction_combobox, results_text):
+                              direction_combobox, results_text, graph_frame):
     """Realiza una prueba de hipótesis para la media"""
     data_str = data_entry.get()
     
@@ -164,34 +241,55 @@ def calculate_hypothesis_test(data_entry, null_hypo_entry, alpha_entry, test_typ
         decision = "Se rechaza" if reject else "No se rechaza"
         
         # Mostrar resultados
-        result_text = f"""PRUEBA DE HIPÓTESIS PARA LA MEDIA
+        result_text = f"""
+🧪 Prueba de Hipótesis para la Media
+    📥 Datos de Entrada
 
-Datos de entrada:
-- Tamaño de muestra (n): {n}
-- Media muestral (x̄): {mean:.6f}
-- Desviación estándar muestral (s): {std_dev:.6f}
-- Valor de la hipótesis nula (μ₀): {null_value}
-- Nivel de significancia (α): {alpha}
-- Tipo de prueba: {test_type}
-- Dirección: {direction}
+        🔢 Tamaño de muestra (n): {n}
 
-Hipótesis:
-- H₀: μ {"=" if direction == "Dos colas" else "≥" if direction == "Cola izquierda" else "≤"} {null_value}
-- H₁: {hypothesis_alt}
+        📊 Media muestral (x̄): {mean:.6f}
 
-Cálculos:
-- Error estándar: {std_error:.6f}
-- Estadístico de prueba: {test_stat:.6f}
-- Valor crítico ({distribution}): {critical_value:.6f}
-- Valor p: {p_value:.6f}
+        📈 Desviación estándar muestral (s): {std_dev:.6f}
 
-Resultado:
-- Decisión: {decision} la hipótesis nula al nivel α = {alpha}
-- Interpretación: {decision} la hipótesis de que la media poblacional {"es igual a" if direction == "Dos colas" else "es mayor o igual a" if direction == "Cola izquierda" else "es menor o igual a"} {null_value}.
-"""
-        
+        🎯 Valor de la hipótesis nula (μ₀): {null_value}
+
+        ⚠️ Nivel de significancia (α): {alpha}
+
+        🧭 Tipo de prueba: {test_type}
+
+        ↔️ Dirección: {direction}
+
+        🧾 Hipótesis
+
+            H₀: μ {"=" if direction == "Dos colas" else "≥" if direction == "Cola izquierda" else "≤"} {null_value}
+
+            H₁: {hypothesis_alt}
+
+    🧮 Cálculos
+
+        🧠 Error estándar (SE): {std_error:.6f}
+
+        📏 Estadístico de prueba: {test_stat:.6f}
+
+        🎯 Valor crítico ({distribution}): {critical_value:.6f}
+
+        📉 Valor p: {p_value:.6f}
+
+    ✅ Resultado
+
+        📝 Decisión: {decision} la hipótesis nula al nivel de significancia α = {alpha}
+
+        📌 Interpretación: Se {decision} la hipótesis de que la media poblacional {"es igual a" if direction == "Dos colas" else "es mayor o igual a" if direction == "Cola izquierda" else "es menor o igual a"} {null_value}.
+        """        
         results_text.delete(1.0, tk.END)
         results_text.insert(tk.INSERT, result_text)
+
+        # Limpiar el frame de la gráfica antes de dibujar
+        for widget in graph_frame.winfo_children():
+            widget.destroy()
+        
+        # Llamar a la función de graficado
+        plot_distribution(test_stat, critical_value, test_type, direction, n, graph_frame)
         
     except Exception as e:
         messagebox.showerror("Error", f"Error en los cálculos: {str(e)}")
@@ -302,54 +400,6 @@ def setup_confidence_interval_tab(tab):
     # Variables para almacenar los widgets que necesitarán ser accedidos
     conf_widgets = {}
     
-    # Etiqueta y campo para los datos de muestra
-    tk.Label(tab, text="Datos de la muestra (separados por comas):").grid(row=0, column=0, sticky="w", padx=10, pady=5)
-    conf_widgets['data_entry'] = tk.Entry(tab, width=50)
-    conf_widgets['data_entry'].grid(row=0, column=1, padx=10, pady=5)
-    
-    # Nivel de confianza
-    tk.Label(tab, text="Nivel de confianza (%):").grid(row=1, column=0, sticky="w", padx=10, pady=5)
-    conf_widgets['conf_level_entry'] = tk.Entry(tab, width=10)
-    conf_widgets['conf_level_entry'].insert(0, "95")
-    conf_widgets['conf_level_entry'].grid(row=1, column=1, sticky="w", padx=10, pady=5)
-    
-    # Tipo de prueba
-    tk.Label(tab, text="Tipo de prueba:").grid(row=2, column=0, sticky="w", padx=10, pady=5)
-    conf_widgets['test_type'] = ttk.Combobox(tab, values=["Z (muestra grande o varianza conocida)", "t (muestra pequeña)"])
-    conf_widgets['test_type'].current(1)  # Seleccionar prueba t por defecto
-    conf_widgets['test_type'].grid(row=2, column=1, sticky="w", padx=10, pady=5)
-    
-    # Área de resultados
-    tk.Label(tab, text="Resultados:").grid(row=4, column=0, sticky="w", padx=10, pady=5)
-    conf_widgets['results'] = scrolledtext.ScrolledText(tab, width=80, height=15)
-    conf_widgets['results'].grid(row=5, column=0, columnspan=3, padx=10, pady=5)
-    
-    # Botones
-    load_button = tk.Button(tab, text="Cargar desde archivo", 
-                            command=lambda: load_data(tab, conf_widgets['data_entry'], None))
-    load_button.grid(row=0, column=2, padx=10, pady=5)
-    
-    calc_button = tk.Button(tab, text="Calcular", 
-                           command=lambda: calculate_confidence_interval(
-                               conf_widgets['data_entry'], 
-                               conf_widgets['conf_level_entry'], 
-                               conf_widgets['test_type'], 
-                               conf_widgets['results']))
-    calc_button.grid(row=3, column=0, columnspan=3, pady=10)
-    
-    save_button = tk.Button(tab, text="Guardar Resultados", 
-                           command=lambda: save_results(
-                               conf_widgets['results'], 
-                               "RESULTADOS DEL INTERVALO DE CONFIANZA"))
-    save_button.grid(row=6, column=0, columnspan=3, pady=10)
-    
-    return conf_widgets
-
-def setup_hypothesis_test_tab(tab):
-    """Configura la pestaña de pruebas de hipótesis"""
-    # Variables para almacenar los widgets que necesitarán ser accedidos
-    hypo_widgets = {}
-    
     # Crear un estilo personalizado para las etiquetas
     estilo_labels = ttk.Style()
     estilo_labels.configure("stLabs.TLabel", 
@@ -357,14 +407,14 @@ def setup_hypothesis_test_tab(tab):
                         foreground="#333333",
                         background="#ccc5b9",
                         padding=(10, 5))
-    
+
     # Crear un estilo personalizado para los combobox
     estilos_combo = ttk.Style()
     estilos_combo.configure("stCombos.TCombobox",
                         foreground="#333333",
                         background="#ccc5b9",
                         padding=(10, 5))
-    
+
     # Crear un estilo personalizado para los entry
     estilo_entry = {
         "font": ("Arial", 12),
@@ -376,7 +426,122 @@ def setup_hypothesis_test_tab(tab):
         "highlightbackground": "#FFFFFF",  # Color del borde igual al fondo
         "highlightcolor": "#ccc5b9"  # Color del resaltado igual al fondo
     }
+
+    # Crear un estilo para el botón
+    estilo_boton = ttk.Style()
+    estilo_boton.configure("stBttn.TButton",
+                foreground="#FFFFFF",
+                font=("Arial", 12),
+                justify="center",
+                padding=(10, 5),
+                relief= "raised",
+                background="#197278")
     
+    # Configurar el grid para que se expanda
+    tab.grid_rowconfigure(0, weight=1, minsize=300)
+    tab.grid_rowconfigure(1, weight=1, minsize=350)
+    
+    tab.grid_columnconfigure(0, weight=1)
+    
+    # Contenedor para los widgets de entrada y salida de datos
+    conf_widgets['frame'] = tk.Frame(tab, bg="#ccc5b9")
+    conf_widgets['frame'].grid(row=0, column=0, sticky="new", padx=10, pady=4)
+    
+    conf_widgets['frame'].grid_rowconfigure(0, weight=3)
+    conf_widgets['frame'].grid_rowconfigure(1, weight=1)
+    conf_widgets['frame'].grid_rowconfigure(2, weight=1)
+    conf_widgets['frame'].grid_rowconfigure(3, weight=1)
+    conf_widgets['frame'].grid_rowconfigure(4, weight=1)
+    conf_widgets['frame'].grid_rowconfigure(5, weight=1)
+    conf_widgets['frame'].grid_rowconfigure(6, weight=3)
+    
+    conf_widgets['frame'].grid_columnconfigure(0, weight=1)
+    conf_widgets['frame'].grid_columnconfigure(1, weight=1)
+    conf_widgets['frame'].grid_columnconfigure(2, weight=1)
+    conf_widgets['frame'].grid_columnconfigure(3, weight=5)
+    
+    # Etiqueta y campo para los datos de muestra
+    ttk.Label(conf_widgets['frame'], text="Datos de la muestra (separados por comas):", style="stLabs.TLabel").grid(row=1, column=0, sticky="w", padx=10)
+    conf_widgets['data_entry'] = tk.Entry(conf_widgets['frame'], **estilo_entry)
+    conf_widgets['data_entry'].grid(row=1, column=1, sticky="ew")
+    
+    # Nivel de confianza
+    ttk.Label(conf_widgets['frame'], text="Nivel de confianza (%):", style="stLabs.TLabel").grid(row=2, column=0, sticky="w", padx=10)
+    conf_widgets['conf_level_entry'] = tk.Entry(conf_widgets['frame'], **estilo_entry)
+    conf_widgets['conf_level_entry'].insert(0, "95")
+    conf_widgets['conf_level_entry'].grid(row=2, column=1, sticky="ew")
+    
+    custom_font = tkfont.Font(family="Arial", size=12)
+    # Tipo de prueba
+    ttk.Label(conf_widgets['frame'], text="Tipo de prueba:", style="stLabs.TLabel").grid(row=3, column=0, sticky="w", padx=10)
+    conf_widgets['test_type'] = ttk.Combobox(conf_widgets['frame'], values=["Z (muestra grande o varianza conocida)", "t (muestra pequeña)"], style="stCombos.TCombobox", font=custom_font)
+    conf_widgets['test_type'].current(1)  # Seleccionar prueba t por defecto
+    conf_widgets['test_type'].grid(row=3, column=1, sticky="ew")
+    
+    # Area de resultados
+    fuente_personalizada = tkfont.Font(family="Arial", size=12)
+    ttk.Label(conf_widgets['frame'], text="Resultados:", style="stLabs.TLabel").grid(row=1, column=3, sticky="nsew", padx=10)
+    conf_widgets['results'] = scrolledtext.ScrolledText(conf_widgets['frame'], font=fuente_personalizada)
+    conf_widgets['results'].grid(row=2, rowspan=3, column=3, padx=5)
+
+    # Botones
+    load_button = tk.Button(conf_widgets['frame'], text="  ⬆  ", font=('Arial', 12), command=lambda: load_data(conf_widgets['frame'], conf_widgets['data_entry'], None))
+    load_button.config(background="#197278", foreground="#FFFFFF", relief="raised")
+    load_button.grid(row=1, column=2, sticky="nsew")
+
+    calc_button = ttk.Button(conf_widgets['frame'], text="Calcular", style="stBttn.TButton",
+                           command=lambda: calculate_confidence_interval(
+                               conf_widgets['data_entry'], 
+                               conf_widgets['conf_level_entry'], 
+                               conf_widgets['test_type'], 
+                               conf_widgets['results'], 
+                               conf_widgets['graph_frame']))
+    calc_button.grid(row=4, column=0, pady=2)
+
+    save_button = ttk.Button(conf_widgets['frame'], text="Guardar Resultados", style="stBttn.TButton",
+                           command=lambda: save_results(
+                               conf_widgets['results'], 
+                               "RESULTADOS DEL INTERVALO DE CONFIANZA"))
+    save_button.grid(row=4, column=1, pady=2)
+
+    # Frame para la gráfica
+    conf_widgets['graph_frame'] = tk.Frame(tab)
+    conf_widgets['graph_frame'].grid(row=1, column=0, sticky="nsew", padx=10, pady=2)
+
+    return conf_widgets
+
+def setup_hypothesis_test_tab(tab):
+    """Configura la pestaña de pruebas de hipótesis"""
+    # Variables para almacenar los widgets que necesitarán ser accedidos
+    hypo_widgets = {}
+
+    # Crear un estilo personalizado para las etiquetas
+    estilo_labels = ttk.Style()
+    estilo_labels.configure("stLabs.TLabel", 
+                        font=("Arial", 12),
+                        foreground="#333333",
+                        background="#ccc5b9",
+                        padding=(10, 5))
+
+    # Crear un estilo personalizado para los combobox
+    estilos_combo = ttk.Style()
+    estilos_combo.configure("stCombos.TCombobox",
+                        foreground="#333333",
+                        background="#ccc5b9",
+                        padding=(10, 5))
+
+    # Crear un estilo personalizado para los entry
+    estilo_entry = {
+        "font": ("Arial", 12),
+        "fg": "#333333",  # color del texto
+        "insertbackground": "#333333",  # color del cursor
+        "relief": "flat",  # tipo de borde (solid, raised, sunken, ridge, groove, flat)
+        "borderwidth": 10,
+        "highlightthickness": 1,
+        "highlightbackground": "#FFFFFF",  # Color del borde igual al fondo
+        "highlightcolor": "#ccc5b9"  # Color del resaltado igual al fondo
+    }
+
     # Crear un estilo para el botón
     estilo_boton = ttk.Style()
     estilo_boton.configure("stBttn.TButton",
@@ -387,118 +552,157 @@ def setup_hypothesis_test_tab(tab):
                 relief= "raised",
                 background="#197278",)
     
+    # Configurar el grid para que se expanda
+    tab.grid_rowconfigure(0, weight=1, minsize=300)
+    tab.grid_rowconfigure(1, weight=1, minsize=350)
+    
+    tab.grid_columnconfigure(0, weight=1)
+    
+    # Contenedor para los widgets de entrada y salida de datos
+    hypo_widgets['frame'] = tk.Frame(tab, bg="#ccc5b9")
+    hypo_widgets['frame'].grid(row=0, column=0, sticky="ew", padx=10, pady=5)
+    
+    hypo_widgets['frame'].grid_rowconfigure(0, weight=3)
+    hypo_widgets['frame'].grid_rowconfigure(1, weight=1)
+    hypo_widgets['frame'].grid_rowconfigure(2, weight=1)
+    hypo_widgets['frame'].grid_rowconfigure(3, weight=1)
+    hypo_widgets['frame'].grid_rowconfigure(4, weight=1)
+    hypo_widgets['frame'].grid_rowconfigure(5, weight=1)
+    hypo_widgets['frame'].grid_rowconfigure(6, weight=1)
+    
+    hypo_widgets['frame'].grid_columnconfigure(0, weight=1)
+    hypo_widgets['frame'].grid_columnconfigure(1, weight=1)
+    hypo_widgets['frame'].grid_columnconfigure(2, weight=1)
+    hypo_widgets['frame'].grid_columnconfigure(3, weight=5)
+
     # Etiqueta y campo para los datos de muestra
-    ttk.Label(tab, text="Datos de la muestra (separados por comas):", style="stLabs.TLabel").grid(row=0, column=0, sticky="ew", pady=5)
-    hypo_widgets['data_entry'] = tk.Entry(tab, width=50, **estilo_entry)
-    hypo_widgets['data_entry'].grid(row=0, column=1, columnspan=1, sticky="nsew", pady=5)
-    
+    ttk.Label(hypo_widgets['frame'], text="Datos de la muestra (separados por comas):", style="stLabs.TLabel").grid(row=1, column=0, sticky="w", padx=10)
+    hypo_widgets['data_entry'] = tk.Entry(hypo_widgets['frame'], **estilo_entry)
+    hypo_widgets['data_entry'].grid(row=1, column=1, columnspan=1, sticky="ew")
+
     # Hipótesis nula (media hipotética)
-    ttk.Label(tab, text="Valor de la hipótesis nula (μ₀):", style="stLabs.TLabel").grid(row=1, column=0, sticky="w", padx=10, pady=5)
-    hypo_widgets['null_hypothesis_entry'] = tk.Entry(tab, width=10, **estilo_entry)
+    ttk.Label(hypo_widgets['frame'], text="Valor de la hipótesis nula (μ₀):", style="stLabs.TLabel").grid(row=2, column=0, sticky="w", padx=10)
+    hypo_widgets['null_hypothesis_entry'] = tk.Entry(hypo_widgets['frame'], **estilo_entry)
     hypo_widgets['null_hypothesis_entry'].insert(0, "0")
-    hypo_widgets['null_hypothesis_entry'].grid(row=1, column=1, columnspan=2, sticky="nsew", pady=5)
-    
-    
+    hypo_widgets['null_hypothesis_entry'].grid(row=2, column=1, columnspan=2, sticky="ew")
+
     custom_font = tkfont.Font(family="Arial", size=12)
-    
+
     # Tipo de prueba
-    ttk.Label(tab, text="Tipo de prueba:", style="stLabs.TLabel").grid(row=2, column=0, sticky="w", padx=10, pady=5)
-    hypo_widgets['test_type'] = ttk.Combobox(tab, values=["Z (muestra grande o varianza conocida)", "t (muestra pequeña)"], style="stCombos.TCombobox", font=custom_font)
+    ttk.Label(hypo_widgets['frame'], text="Tipo de prueba:", style="stLabs.TLabel").grid(row=3, column=0, sticky="w", padx=10)
+    hypo_widgets['test_type'] = ttk.Combobox(hypo_widgets['frame'], values=["Z (muestra grande o varianza conocida)", "t (muestra pequeña)"], style="stCombos.TCombobox", font=custom_font)
     hypo_widgets['test_type'].current(1)  # Seleccionar prueba t por defecto
-    hypo_widgets['test_type'].grid(row=2, column=1, columnspan=2, sticky="nsew", pady=5)
-    
+    hypo_widgets['test_type'].grid(row=3, column=1, columnspan=2, sticky="ew")
+
     # Dirección de la prueba
-    ttk.Label(tab, text="Dirección de la prueba:", style="stLabs.TLabel").grid(row=3, column=0, sticky="w", padx=10, pady=5)
-    hypo_widgets['test_direction'] = ttk.Combobox(tab, values=["Dos colas", "Cola izquierda", "Cola derecha"], style="stCombos.TCombobox", font=custom_font)
+    ttk.Label(hypo_widgets['frame'], text="Dirección de la prueba:", style="stLabs.TLabel").grid(row=4, column=0, sticky="w", padx=10)
+    hypo_widgets['test_direction'] = ttk.Combobox(hypo_widgets['frame'], values=["Dos colas", "Cola izquierda", "Cola derecha"], style="stCombos.TCombobox", font=custom_font)
     hypo_widgets['test_direction'].current(0)  # Seleccionar dos colas por defecto
-    hypo_widgets['test_direction'].grid(row=3, column=1, columnspan=2, sticky="nsew", pady=5)
-    
+    hypo_widgets['test_direction'].grid(row=4, column=1, columnspan=2, sticky="ew")
+
     # Nivel de significancia
-    ttk.Label(tab, text="Nivel de significancia (α):", style="stLabs.TLabel").grid(row=4, column=0, sticky="w", padx=10, pady=5)
-    hypo_widgets['alpha_entry'] = tk.Entry(tab, width=10, **estilo_entry)
+    ttk.Label(hypo_widgets['frame'], text="Nivel de significancia (α):", style="stLabs.TLabel").grid(row=5, column=0, sticky="w", padx=10)
+    hypo_widgets['alpha_entry'] = tk.Entry(hypo_widgets['frame'], **estilo_entry)
     hypo_widgets['alpha_entry'].insert(0, "0.05")
-    hypo_widgets['alpha_entry'].grid(row=4, column=1, columnspan=2, sticky="nsew", pady=5)
-    
+    hypo_widgets['alpha_entry'].grid(row=5, column=1, columnspan=2, sticky="ew")
+
     # Área de resultados
-    ttk.Label(tab, text="Resultados:", style="stLabs.TLabel").grid(row=0, column=3, sticky="nsew", padx=5, pady=5)
-    hypo_widgets['results'] = scrolledtext.ScrolledText(tab)
-    hypo_widgets['results'].grid(row=1, rowspan=5, column=3, padx=5, pady=5)
-    
+    fuente_personalizada = tkfont.Font(family="Arial", size=12)
+    ttk.Label(hypo_widgets['frame'], text="Resultados:", style="stLabs.TLabel").grid(row=1, column=3, sticky="nsew", padx=5)
+    hypo_widgets['results'] = scrolledtext.ScrolledText(hypo_widgets['frame'], font=fuente_personalizada)
+    hypo_widgets['results'].grid(row=2, rowspan=5, column=3, padx=5)
+
     # Botones
-    load_button = ttk.Button(tab, text="⬆", style="stBttn.TButton", command=lambda: load_data(tab, None, hypo_widgets['data_entry']))
-    load_button.grid(row=0, column=2, columnspan=1, sticky="nsew", pady=5)
-    
-    calc_button = ttk.Button(tab, text="  Calcular  ", style="stBttn.TButton",
+    load_button = tk.Button(hypo_widgets['frame'], text="  ⬆  ", font=('Arial', 12), command=lambda: load_data(hypo_widgets['frame'], None, hypo_widgets['data_entry']))
+    load_button.config(background="#197278", foreground="#FFFFFF", relief="raised")
+    load_button.grid(row=1, column=2, columnspan=1, sticky="nsew")
+
+    calc_button = ttk.Button(hypo_widgets['frame'], text="  Calcular  ", style="stBttn.TButton",
                            command=lambda: calculate_hypothesis_test(
                                hypo_widgets['data_entry'], 
                                hypo_widgets['null_hypothesis_entry'], 
                                hypo_widgets['alpha_entry'], 
                                hypo_widgets['test_type'], 
                                hypo_widgets['test_direction'], 
-                               hypo_widgets['results']))
-    calc_button.grid(row=5, column=0, pady=10)
-    
-    save_button = ttk.Button(tab, text="  Guardar Resultados  ", style="stBttn.TButton",
+                               hypo_widgets['results'], 
+                               hypo_widgets['graph_frame']))
+    calc_button.grid(row=6, column=0)
+
+    save_button = ttk.Button(hypo_widgets['frame'], text="  Guardar Resultados  ", style="stBttn.TButton",
                            command=lambda: save_results(
                                hypo_widgets['results'], 
                                "RESULTADOS DE LA PRUEBA DE HIPÓTESIS"))
-    save_button.grid(row=5, column=1, pady=10)
+    save_button.grid(row=6, column=1)
+        
+    # Frame para la gráfica
+    hypo_widgets['graph_frame'] = tk.Frame(tab)
+    hypo_widgets['graph_frame'].grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
     
     return hypo_widgets
+
 
 def setup_help_tab(tab):
     """Configura la pestaña de ayuda"""
     help_text = """
-    AYUDA - CALCULADORA ESTADÍSTICA
+    <h1 style="color: #eb5e28;">CALCULADORA ESTADÍSTICA 📊</h1>
     
-    Esta aplicación permite realizar cálculos estadísticos fundamentales:
+    <p style="text-align: justify;">Bienvenido a la Calculadora Estadística, una herramienta diseñada para facilitar la realización de cálculos estadísticos fundamentales de manera intuitiva y eficiente. Esta aplicación es ideal tanto para estudiantes como para profesionales que necesitan realizar análisis estadísticos precisos.</p>
     
-    1. INTERVALOS DE CONFIANZA
+    <h2 style="color: #eb5e28;">1. INTERVALOS DE CONFIANZA 📏</h2>
+    <p style="text-align: justify;">Un intervalo de confianza proporciona un rango de valores que probablemente contiene el parámetro poblacional desconocido.</p>
+    <ul style="text-align: justify;">
+        <li><b>Datos de muestra:</b> Ingresar los valores separados por comas o cargar desde un archivo.</li>
+        <li><b>Nivel de confianza:</b> Típicamente 95% o 99%, representa la probabilidad de que el intervalo contenga el parámetro.</li>
+        <li><b>Tipo de prueba:</b>
+            <ul>
+                <li><b>Z:</b> Para muestras grandes (n ≥ 30) o cuando se conoce la desviación estándar poblacional.</li>
+                <li><b>t:</b> Para muestras pequeñas (n < 30) cuando no se conoce la desviación estándar poblacional.</li>
+            </ul>
+        </li>
+    </ul>
+    <p style="text-align: justify;"><b>Fórmula general:</b> x̄ ± (valor crítico) × (error estándar)</p>
     
-    Un intervalo de confianza proporciona un rango de valores que probablemente contiene el parámetro poblacional desconocido.
+    <h2 style="color: #eb5e28;">2. PRUEBAS DE HIPÓTESIS (PRUEBAS DE MEDIAS) 🧪</h2>
+    <p style="text-align: justify;">Permiten tomar decisiones sobre parámetros poblacionales basadas en información muestral.</p>
+    <ul style="text-align: justify;">
+        <li><b>Datos de muestra:</b> Valores separados por comas o desde archivo.</li>
+        <li><b>Hipótesis nula (μ₀):</b> Valor que se asume verdadero hasta que la evidencia indique lo contrario.</li>
+        <li><b>Tipo de prueba:</b> Z o t (igual que para intervalos).</li>
+        <li><b>Dirección de la prueba:</b>
+            <ul>
+                <li><b>Dos colas:</b> H₀: μ = μ₀ vs H₁: μ ≠ μ₀</li>
+                <li><b>Cola izquierda:</b> H₀: μ ≥ μ₀ vs H₁: μ < μ₀</li>
+                <li><b>Cola derecha:</b> H₀: μ ≤ μ₀ vs H₁: μ > μ₀</li>
+            </ul>
+        </li>
+    </ul>
+    <p style="text-align: justify;">La aplicación calcula:</p>
+    <ul style="text-align: justify;">
+        <li>Estadístico de prueba (Z o t)</li>
+        <li>Valor p (probabilidad de obtener un resultado al menos tan extremo como el observado)</li>
+        <li>Decisión (rechazar o no rechazar H₀)</li>
+    </ul>
     
-    - Datos de muestra: Ingresar los valores separados por comas o cargar desde un archivo.
-    - Nivel de confianza: Típicamente 95% o 99%, representa la probabilidad de que el intervalo contenga el parámetro.
-    - Tipo de prueba:
-      * Z: Para muestras grandes (n ≥ 30) o cuando se conoce la desviación estándar poblacional.
-      * t: Para muestras pequeñas (n < 30) cuando no se conoce la desviación estándar poblacional.
+    <h2 style="color: #eb5e28;">3. CARGA Y GUARDADO DE DATOS 💾</h2>
+    <ul style="text-align: justify;">
+        <li><b>Cargar desde archivo:</b> Permite importar datos desde archivos CSV, Excel (.xlsx) o Parquet.</li>
+        <li><b>Guardar resultados:</b> Exporta los resultados a un archivo de texto para uso posterior.</li>
+    </ul>
+
+    <h2 style="color: #eb5e28;">4. FINALIDAD DE LA APLICACIÓN 🎯</h2>
+    <p style="text-align: justify;">La finalidad de esta aplicación es proporcionar una herramienta accesible y fácil de usar para realizar cálculos estadísticos esenciales. Con una interfaz amigable y funciones claras, esta calculadora estadística está diseñada para ayudar a los usuarios a obtener resultados precisos y confiables, facilitando así el análisis de datos en diversas áreas como la investigación, la educación y el análisis de negocios.</p>
     
-    Fórmula general: x̄ ± (valor crítico) × (error estándar)
-    
-    2. PRUEBAS DE HIPÓTESIS (PRUEBAS DE MEDIAS)
-    
-    Permiten tomar decisiones sobre parámetros poblacionales basadas en información muestral.
-    
-    - Datos de muestra: Valores separados por comas o desde archivo.
-    - Hipótesis nula (μ₀): Valor que se asume verdadero hasta que la evidencia indique lo contrario.
-    - Tipo de prueba: Z o t (igual que para intervalos).
-    - Dirección de la prueba:
-      * Dos colas: H₀: μ = μ₀ vs H₁: μ ≠ μ₀
-      * Cola izquierda: H₀: μ ≥ μ₀ vs H₁: μ < μ₀
-      * Cola derecha: H₀: μ ≤ μ₀ vs H₁: μ > μ₀
-    
-    La aplicación calcula:
-    - Estadístico de prueba (Z o t)
-    - Valor p (probabilidad de obtener un resultado al menos tan extremo como el observado)
-    - Decisión (rechazar o no rechazar H₀)
-    
-    3. CARGA Y GUARDADO DE DATOS
-    
-    - Cargar desde archivo: Permite importar datos desde archivos CSV, Excel (.xlsx) o Parquet.
-    - Guardar resultados: Exporta los resultados a un archivo de texto para uso posterior.
-    
-    NOTA: Para resultados precisos, asegúrese de que los datos sean numéricos y que la muestra sea adecuada para el tipo de prueba seleccionado.
+    <p style="text-align: justify;"><b>NOTA:</b> Para resultados precisos, asegúrese de que los datos sean numéricos y que la muestra sea adecuada para el tipo de prueba seleccionado.</p>
     """
     
-    help_area = scrolledtext.ScrolledText(tab, width=80, height=30)
+    # Crear el HTMLLabel con el texto de ayuda en HTML
+    help_area = HTMLLabel(tab, html=help_text, width=80, height=30)
     help_area.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-    help_area.insert(tk.INSERT, help_text)
-    help_area.config(state='disabled')  # Hacer el texto de ayuda de solo lectura
     
     # Configurar el grid para que se expanda
     tab.grid_rowconfigure(0, weight=1)
     tab.grid_columnconfigure(0, weight=1)
-
+        
 def main():
     # Crear la ventana principal
     ventana = tk.Tk()
@@ -507,20 +711,8 @@ def main():
     ventana.attributes("-fullscreen", True)
     
     # Crear notebook (pestañas)
-    notebook = ttk.Notebook(ventana)    
+    notebook = ttk.Notebook(ventana)
     notebook.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-    
-    notebook.grid_rowconfigure(0, weight=1)
-    notebook.grid_rowconfigure(1, weight=1)
-    notebook.grid_rowconfigure(2, weight=1)
-    notebook.grid_rowconfigure(3, weight=1)
-    notebook.grid_rowconfigure(4, weight=1)
-    notebook.grid_rowconfigure(5, weight=1)
-    
-    notebook.grid_columnconfigure(0, weight=1)
-    notebook.grid_columnconfigure(1, weight=1)
-    notebook.grid_columnconfigure(2, weight=1)
-    notebook.grid_columnconfigure(3, weight=3)
     
     # Configurar el grid para que se expanda
     ventana.grid_rowconfigure(0, weight=1)
@@ -554,8 +746,8 @@ def main():
     notebook.add(help_tab, text="Ayuda")
     
     # Configurar las pestañas
-    conf_widgets = setup_confidence_interval_tab(conf_interval_tab)
-    hypo_widgets = setup_hypothesis_test_tab(hypothesis_test_tab)
+    setup_confidence_interval_tab(conf_interval_tab) 
+    setup_hypothesis_test_tab(hypothesis_test_tab)
     setup_help_tab(help_tab)
     
     ventana.option_add('*TCombobox*Listbox.Background', '#fab005') # Color del fondo del menú
